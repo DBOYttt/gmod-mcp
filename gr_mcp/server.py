@@ -11,14 +11,13 @@ from gr_mcp.pty_manager import PtyManager
 _GMOD_ROOT = Path(
     os.environ.get("GMOD_ROOT", str(Path.home() / "Documents/projects/gmod"))
 )
-_SRCDS_CMD = ["bash", "server/start.sh"]
+_SRCDS_CMD = os.environ.get("GMOD_SRCDS_CMD", "bash server/start.sh").split()
 _SRCDS_CWD = str(_GMOD_ROOT)
 _SCHEMA_PATH = str(_GMOD_ROOT / "garrysmod/schema")
 
 _pty = PtyManager(_SRCDS_CMD, _SRCDS_CWD)
 _lua = LuaRunner(_pty)
 _watcher = FileWatcher(_SCHEMA_PATH)
-_watcher_started = False  # watchdog Observer cannot be restarted; start once and leave running
 
 mcp = FastMCP("gmod")
 
@@ -26,11 +25,9 @@ mcp = FastMCP("gmod")
 @mcp.tool()
 async def gr_server_start() -> dict:
     """Start the GMod dedicated server. Returns {running, pid, uptime_s}."""
-    global _watcher_started
     result = await _pty.start()
-    if result["running"] and not _watcher_started:
+    if result["running"] and not _watcher._observer.is_alive():
         _watcher.start()
-        _watcher_started = True
     return result
 
 
@@ -53,7 +50,8 @@ def gr_server_status() -> dict:
     """
     Get server status.
     Returns {running, pid, uptime_s, dirty_files}.
-    dirty_files lists Lua files changed since the last restart.
+    dirty_files lists Lua files changed since the last restart (persists across stop/start).
+    Call gr_server_restart to clear dirty_files.
     """
     status = _pty.status()
     status["dirty_files"] = _watcher.dirty_files
@@ -71,13 +69,13 @@ def gr_server_exec(command: str) -> dict:
 
 
 @mcp.tool()
-async def gr_lua_run(code: str, timeout: int = 5) -> dict:
+async def gr_lua_run(code: str, timeout: float = 5.0) -> dict:
     """
     Execute Lua on the server and return only its output.
     Uses token-bracketing so unrelated server noise is excluded.
     Returns {output, timed_out} or {output, timed_out, error}.
     """
-    return await _lua.run(code, float(timeout))
+    return await _lua.run(code, timeout)
 
 
 @mcp.tool()
