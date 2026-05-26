@@ -17,14 +17,16 @@ class Screenshot:
             os.close(fd)
 
         try:
-            subprocess.run(
-                ["xdotool", "search", "--name", self._window_name, "windowfocus", "--sync"],
-                check=True,
-                capture_output=True,
+            ids = subprocess.check_output(
+                ["xdotool", "search", "--name", self._window_name],
+                stderr=subprocess.DEVNULL,
                 timeout=5,
-            )
+            ).decode().split()
+            if not ids:
+                raise OSError(f"window '{self._window_name}' not found")
+            wid = ids[0]
             subprocess.run(
-                ["scrot", "-u", path],
+                ["scrot", "-w", wid, path],
                 check=True,
                 capture_output=True,
                 timeout=10,
@@ -35,7 +37,7 @@ class Screenshot:
                     os.unlink(path)
                 except OSError:
                     pass
-            return {"ok": False, "error": e.stderr.decode()}
+            return {"ok": False, "error": (e.stderr or b"").decode()}
         except subprocess.TimeoutExpired:
             if _tmp:
                 try:

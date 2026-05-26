@@ -1,5 +1,6 @@
 import base64
 import struct
+import subprocess
 import pytest
 from unittest.mock import patch
 
@@ -26,7 +27,8 @@ def test_capture_returns_path_base64_and_dimensions(screen, tmp_path):
     with open(out_path, "wb") as f:
         f.write(png_data)
 
-    with patch("subprocess.run"):  # suppress xdotool + scrot calls
+    with patch("subprocess.check_output", return_value=b"12345678\n"), \
+         patch("subprocess.run"):
         result = screen.capture(out_path)
 
     assert result["path"] == out_path
@@ -40,11 +42,12 @@ def test_capture_creates_temp_file_when_no_path(screen):
 
     def fake_run(args, **kwargs):
         if args[0] == "scrot":
-            path = args[-1]  # scrot -u <path>
+            path = args[-1]  # scrot -w <wid> <path>
             with open(path, "wb") as f:
                 f.write(png_data)
 
-    with patch("subprocess.run", side_effect=fake_run):
+    with patch("subprocess.check_output", return_value=b"12345678\n"), \
+         patch("subprocess.run", side_effect=fake_run):
         result = screen.capture()
 
     assert result["path"].endswith(".png")
@@ -53,9 +56,8 @@ def test_capture_creates_temp_file_when_no_path(screen):
 
 
 def test_capture_returns_error_on_xdotool_failure(screen):
-    import subprocess
     err = subprocess.CalledProcessError(1, "xdotool", stderr=b"no window")
-    with patch("subprocess.run", side_effect=err):
+    with patch("subprocess.check_output", side_effect=err):
         result = screen.capture("/tmp/x.png")
 
     assert result.get("ok") is False
@@ -63,8 +65,8 @@ def test_capture_returns_error_on_xdotool_failure(screen):
 
 
 def test_capture_returns_error_on_timeout(screen):
-    import subprocess
-    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("scrot", 10)):
+    with patch("subprocess.check_output",
+               side_effect=subprocess.TimeoutExpired("xdotool", 5)):
         result = screen.capture("/tmp/x.png")
 
     assert result.get("ok") is False
@@ -76,7 +78,8 @@ def test_capture_returns_error_on_corrupt_png(screen, tmp_path):
     with open(corrupt_path, "wb") as f:
         f.write(b"\x89PNG\r\n\x1a\n")  # valid signature but no IHDR (only 8 bytes)
 
-    with patch("subprocess.run"):  # suppress xdotool + scrot calls
+    with patch("subprocess.check_output", return_value=b"12345678\n"), \
+         patch("subprocess.run"):
         result = screen.capture(corrupt_path)
 
     assert result.get("ok") is False
