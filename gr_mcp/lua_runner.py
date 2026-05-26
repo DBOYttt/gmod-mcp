@@ -1,10 +1,17 @@
 import asyncio
+import re
 import secrets
 import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from gr_mcp.pty_manager import PtyManager
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _clean(text: str) -> str:
+    return _ANSI_RE.sub("", text).strip()
 
 
 class LuaRunner:
@@ -38,14 +45,17 @@ class LuaRunner:
         while time.monotonic() < deadline:
             for line in self._pty.lines_since(last_n):
                 last_n = line["n"]
-                text = line["text"]
-                if start_tok in text:
+                # Strip ANSI codes and use exact equality so PTY/GMod command
+                # echoes (e.g. "lua_run print("GR_xx_START")") are not mistaken
+                # for the actual Lua print output.
+                clean = _clean(line["text"])
+                if clean == start_tok:
                     seen_start = True
                     continue
                 if seen_start:
-                    if end_tok in text:
+                    if clean == end_tok:
                         return {"output": "\n".join(captured), "timed_out": False}
-                    captured.append(text)
+                    captured.append(clean)
             await asyncio.sleep(self.POLL_INTERVAL)
 
         return {"output": "\n".join(captured), "timed_out": True}
