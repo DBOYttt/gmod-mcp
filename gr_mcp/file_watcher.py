@@ -26,7 +26,6 @@ class _LuaHandler(FileSystemEventHandler):
 
 class FileWatcher:
     def __init__(self, path: str) -> None:
-        self._path = path
         self._dirty: set[str] = set()
         self._observer = Observer()
         self._observer.schedule(_LuaHandler(self._dirty), path, recursive=True)
