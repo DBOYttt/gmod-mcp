@@ -21,10 +21,11 @@ class LuaRunner:
         start_tok = f"[[GR_{token}]]"
         end_tok = f"[[GR_{token}_END]]"
 
-        cmd = f'lua_run print("{start_tok}"); {code}; print("{end_tok}")'
+        sanitized = code.replace("\n", "; ")
+        cmd = f'lua_run print("{start_tok}"); {sanitized}; print("{end_tok}")'
         result = self._pty.exec_command(cmd)
         if not result["ok"]:
-            return {"output": "", "timed_out": False, "error": result.get("error", "exec failed")}
+            return {"output": "", "timed_out": False, **result}
 
         deadline = time.monotonic() + timeout
         seen_start = False

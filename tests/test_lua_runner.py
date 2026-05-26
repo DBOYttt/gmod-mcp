@@ -108,3 +108,44 @@ async def test_noise_before_start_token_is_ignored():
     await task
 
     assert result["output"] == "result"
+
+
+async def test_code_with_newlines_is_sanitized():
+    pty = MockPty()
+    runner = LuaRunner(pty)
+
+    async def _inject():
+        await asyncio.sleep(0.05)
+        m = re.search(r'\[\[GR_([0-9a-f]+)\]\]', pty.last_cmd)
+        tok = m.group(1)
+        pty.inject(f"[[GR_{tok}]]")
+        pty.inject("ok")
+        pty.inject(f"[[GR_{tok}_END]]")
+
+    task = asyncio.create_task(_inject())
+    result = await runner.run("print('first')\nprint('second')", timeout=2.0)
+    await task
+
+    # Verify newlines were replaced — command must be single-line
+    assert "\n" not in pty.last_cmd
+    assert result["timed_out"] is False
+
+
+async def test_code_with_quotes_works():
+    pty = MockPty()
+    runner = LuaRunner(pty)
+
+    async def _inject():
+        await asyncio.sleep(0.05)
+        m = re.search(r'\[\[GR_([0-9a-f]+)\]\]', pty.last_cmd)
+        tok = m.group(1)
+        pty.inject(f"[[GR_{tok}]]")
+        pty.inject("hello")
+        pty.inject(f"[[GR_{tok}_END]]")
+
+    task = asyncio.create_task(_inject())
+    result = await runner.run('print("hello")', timeout=2.0)
+    await task
+
+    assert result["timed_out"] is False
+    assert result["output"] == "hello"
