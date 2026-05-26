@@ -23,7 +23,11 @@ class ClientManager:
             f"{client_dir}/bin",
             f"{client_dir}/garrysmod/bin",
         ])
-        env = {**os.environ, "LD_LIBRARY_PATH": lib_path}
+        # Prepend GMod paths to any existing LD_LIBRARY_PATH (e.g. Steam runtime
+        # paths set via env in .mcp.json) so legacy 32-bit libs are found.
+        existing = os.environ.get("LD_LIBRARY_PATH", "")
+        full_lib_path = lib_path + (":" + existing if existing else "")
+        env = {**os.environ, "LD_LIBRARY_PATH": full_lib_path}
         command = [f"{client_dir}/hl2_linux", "-game", "garrysmod"] + args
 
         self._pty = PtyManager(command, client_dir, env=env)
