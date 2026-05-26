@@ -1,3 +1,4 @@
+import asyncio
 import os
 from pathlib import Path
 
@@ -164,34 +165,34 @@ def gr_client_read_output(
 
 
 @mcp.tool()
-def gr_client_screenshot(path: str = "") -> dict:
+async def gr_client_screenshot(path: str = "") -> dict:
     """
     Capture the GMod client window.
     path: optional file path; if empty, a temp file is created.
     Returns {path, base64_png, width, height}.
     base64_png can be passed directly to a vision model.
     """
-    return _screen.capture(path)
+    return await asyncio.to_thread(_screen.capture, path)
 
 
 @mcp.tool()
-def gr_client_click(x: int, y: int) -> dict:
+async def gr_client_click(x: int, y: int) -> dict:
     """
     Click at screen-absolute coordinates (x, y) in the GMod client window.
     Focuses the window with xdotool before clicking.
     Returns {ok} or {ok, error}.
     """
-    return _input.click(x, y)
+    return await asyncio.to_thread(_input.click, x, y)
 
 
 @mcp.tool()
-def gr_client_key(key: str) -> dict:
+async def gr_client_key(key: str) -> dict:
     """
     Send a keypress to the GMod client window.
     key: xdotool key name — e.g. "Return", "Escape", "grave" (opens console), "F1".
     Returns {ok} or {ok, error}.
     """
-    return _input.key(key)
+    return await asyncio.to_thread(_input.key, key)
 
 
 def main() -> None:

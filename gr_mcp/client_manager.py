@@ -61,6 +61,6 @@ class ClientManager:
                 stderr=subprocess.DEVNULL,
                 timeout=2,
             ).decode().strip()
-            return out.split("\n")[0] if out else None
+            return out.split("\n")[0].strip() or None
         except Exception:
             return None

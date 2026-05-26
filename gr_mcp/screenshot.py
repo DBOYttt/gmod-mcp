@@ -11,7 +11,8 @@ class Screenshot:
         self._window_name = window_name
 
     def capture(self, path: str = "") -> dict:
-        if not path:
+        _tmp = not path
+        if _tmp:
             fd, path = tempfile.mkstemp(suffix=".png")
             os.close(fd)
 
@@ -29,9 +30,26 @@ class Screenshot:
                 timeout=10,
             )
         except subprocess.CalledProcessError as e:
+            if _tmp:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
             return {"ok": False, "error": e.stderr.decode()}
         except subprocess.TimeoutExpired:
+            if _tmp:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
             return {"ok": False, "error": "screenshot timed out"}
+        except OSError as e:
+            if _tmp:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+            return {"ok": False, "error": str(e)}
 
         with open(path, "rb") as f:
             data = f.read()

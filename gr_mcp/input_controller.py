@@ -27,6 +27,8 @@ class InputController:
             return {"ok": False, "error": e.stderr.decode()}
         except subprocess.TimeoutExpired:
             return {"ok": False, "error": "xdotool timed out"}
+        except OSError as e:
+            return {"ok": False, "error": str(e)}
 
     def key(self, key: str) -> dict:
         try:
@@ -42,3 +44,5 @@ class InputController:
             return {"ok": False, "error": e.stderr.decode()}
         except subprocess.TimeoutExpired:
             return {"ok": False, "error": "xdotool timed out"}
+        except OSError as e:
+            return {"ok": False, "error": str(e)}
