@@ -18,14 +18,17 @@ class LuaRunner:
             return {"output": "", "timed_out": False, "error": "Server not running"}
 
         token = secrets.token_hex(4)
-        start_tok = f"[[GR_{token}]]"
-        end_tok = f"[[GR_{token}_END]]"
+        start_tok = f"GR_{token}_START"
+        end_tok = f"GR_{token}_END"
 
-        sanitized = code.replace("\n", "; ")
-        cmd = f'lua_run print("{start_tok}"); {sanitized}; print("{end_tok}")'
-        result = self._pty.exec_command(cmd)
+        # GMod console splits on ';' before Lua sees it, so send three separate lua_run calls.
+        # Newlines in user code are collapsed to spaces (can't pass real newlines via PTY stdin).
+        sanitized = code.replace("\n", " ")
+        self._pty.exec_command(f'lua_run print("{start_tok}")')
+        result = self._pty.exec_command(f'lua_run {sanitized}')
         if not result["ok"]:
             return {"output": "", "timed_out": False, **result}
+        self._pty.exec_command(f'lua_run print("{end_tok}")')
 
         deadline = time.monotonic() + timeout
         seen_start = False

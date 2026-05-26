@@ -8,10 +8,10 @@ class MockPty:
     def __init__(self):
         self._ring: list[dict] = []
         self._n = 0
-        self.last_cmd: str = ""
+        self.cmds: list[str] = []
 
     def exec_command(self, cmd: str) -> dict:
-        self.last_cmd = cmd
+        self.cmds.append(cmd)
         return {"ok": True}
 
     def last_line_n(self) -> int:
@@ -27,6 +27,14 @@ class MockPty:
     def is_running(self) -> bool:
         return True
 
+    def find_token(self) -> str:
+        """Extract the hex token from the start-marker command."""
+        for cmd in self.cmds:
+            m = re.search(r'GR_([0-9a-f]+)_START', cmd)
+            if m:
+                return m.group(1)
+        return ""
+
 
 async def test_captures_output_between_tokens():
     pty = MockPty()
@@ -34,11 +42,10 @@ async def test_captures_output_between_tokens():
 
     async def _inject():
         await asyncio.sleep(0.05)
-        m = re.search(r'\[\[GR_([0-9a-f]+)\]\]', pty.last_cmd)
-        tok = m.group(1)
-        pty.inject(f"[[GR_{tok}]]")
+        tok = pty.find_token()
+        pty.inject(f"GR_{tok}_START")
         pty.inject("42")
-        pty.inject(f"[[GR_{tok}_END]]")
+        pty.inject(f"GR_{tok}_END")
 
     task = asyncio.create_task(_inject())
     result = await runner.run("print(6*7)", timeout=2.0)
@@ -54,15 +61,14 @@ async def test_captures_multiline_output():
 
     async def _inject():
         await asyncio.sleep(0.05)
-        m = re.search(r'\[\[GR_([0-9a-f]+)\]\]', pty.last_cmd)
-        tok = m.group(1)
-        pty.inject(f"[[GR_{tok}]]")
+        tok = pty.find_token()
+        pty.inject(f"GR_{tok}_START")
         pty.inject("line1")
         pty.inject("line2")
-        pty.inject(f"[[GR_{tok}_END]]")
+        pty.inject(f"GR_{tok}_END")
 
     task = asyncio.create_task(_inject())
-    result = await runner.run("print('line1'); print('line2')", timeout=2.0)
+    result = await runner.run("print('line1')\nprint('line2')", timeout=2.0)
     await task
 
     assert result["output"] == "line1\nline2"
@@ -96,12 +102,11 @@ async def test_noise_before_start_token_is_ignored():
 
     async def _inject():
         await asyncio.sleep(0.05)
-        m = re.search(r'\[\[GR_([0-9a-f]+)\]\]', pty.last_cmd)
-        tok = m.group(1)
+        tok = pty.find_token()
         pty.inject("unrelated server noise")
-        pty.inject(f"[[GR_{tok}]]")
+        pty.inject(f"GR_{tok}_START")
         pty.inject("result")
-        pty.inject(f"[[GR_{tok}_END]]")
+        pty.inject(f"GR_{tok}_END")
 
     task = asyncio.create_task(_inject())
     result = await runner.run("print('result')", timeout=2.0)
@@ -116,18 +121,17 @@ async def test_code_with_newlines_is_sanitized():
 
     async def _inject():
         await asyncio.sleep(0.05)
-        m = re.search(r'\[\[GR_([0-9a-f]+)\]\]', pty.last_cmd)
-        tok = m.group(1)
-        pty.inject(f"[[GR_{tok}]]")
+        tok = pty.find_token()
+        pty.inject(f"GR_{tok}_START")
         pty.inject("ok")
-        pty.inject(f"[[GR_{tok}_END]]")
+        pty.inject(f"GR_{tok}_END")
 
     task = asyncio.create_task(_inject())
     result = await runner.run("print('first')\nprint('second')", timeout=2.0)
     await task
 
-    # Verify newlines were replaced — command must be single-line
-    assert "\n" not in pty.last_cmd
+    # Newlines collapsed to spaces — no command should have a literal newline
+    assert all("\n" not in cmd for cmd in pty.cmds)
     assert result["timed_out"] is False
 
 
@@ -137,11 +141,10 @@ async def test_code_with_quotes_works():
 
     async def _inject():
         await asyncio.sleep(0.05)
-        m = re.search(r'\[\[GR_([0-9a-f]+)\]\]', pty.last_cmd)
-        tok = m.group(1)
-        pty.inject(f"[[GR_{tok}]]")
+        tok = pty.find_token()
+        pty.inject(f"GR_{tok}_START")
         pty.inject("hello")
-        pty.inject(f"[[GR_{tok}_END]]")
+        pty.inject(f"GR_{tok}_END")
 
     task = asyncio.create_task(_inject())
     result = await runner.run('print("hello")', timeout=2.0)
@@ -149,3 +152,24 @@ async def test_code_with_quotes_works():
 
     assert result["timed_out"] is False
     assert result["output"] == "hello"
+
+
+async def test_three_separate_commands_sent():
+    """Verify runner sends start-token, code, end-token as separate lua_run calls."""
+    pty = MockPty()
+    runner = LuaRunner(pty)
+
+    async def _inject():
+        await asyncio.sleep(0.05)
+        tok = pty.find_token()
+        pty.inject(f"GR_{tok}_START")
+        pty.inject(f"GR_{tok}_END")
+
+    task = asyncio.create_task(_inject())
+    await runner.run("print(1)", timeout=2.0)
+    await task
+
+    assert len(pty.cmds) == 3
+    assert "GR_" in pty.cmds[0] and "_START" in pty.cmds[0]
+    assert pty.cmds[1].startswith("lua_run ")
+    assert "GR_" in pty.cmds[2] and "_END" in pty.cmds[2]
