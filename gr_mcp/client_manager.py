@@ -30,7 +30,7 @@ def _jpeg_dimensions(data: bytes) -> tuple[int, int]:
         length = struct.unpack(">H", data[i + 2: i + 4])[0]
         i += 2 + length
     return 0, 0
-_DEFAULT_ARGS = "-windowed -w 1280 -h 720 +developer 1 -condebug"
+_DEFAULT_ARGS = "-windowed -w 1280 -h 720 +developer 1 -condebug +map gm_flatgrass"
 
 
 class ClientManager:
