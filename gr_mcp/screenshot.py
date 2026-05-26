@@ -54,8 +54,11 @@ class Screenshot:
         with open(path, "rb") as f:
             data = f.read()
 
-        width = struct.unpack(">I", data[16:20])[0]
-        height = struct.unpack(">I", data[20:24])[0]
+        try:
+            width = struct.unpack(">I", data[16:20])[0]
+            height = struct.unpack(">I", data[20:24])[0]
+        except struct.error:
+            return {"ok": False, "error": f"invalid PNG data in {path}"}
 
         return {
             "path": path,

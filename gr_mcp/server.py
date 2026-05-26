@@ -168,7 +168,8 @@ def gr_client_read_output(
 async def gr_client_screenshot(path: str = "") -> dict:
     """
     Capture the GMod client window.
-    path: optional file path; if empty, a temp file is created.
+    path: optional file path; if empty, a temp file is created in /tmp.
+    The caller is responsible for deleting the temp file after use.
     Returns {path, base64_png, width, height}.
     base64_png can be passed directly to a vision model.
     """

@@ -1,4 +1,6 @@
+import asyncio
 import os
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -13,7 +15,7 @@ _DEFAULT_ARGS = "-windowed -w 1280 -h 720 +connect localhost +developer 1 -conde
 class ClientManager:
     def __init__(self) -> None:
         client_dir = os.environ.get("GMOD_CLIENT_DIR", _DEFAULT_CLIENT_DIR)
-        args = os.environ.get("GMOD_CLIENT_ARGS", _DEFAULT_ARGS).split()
+        args = shlex.split(os.environ.get("GMOD_CLIENT_ARGS", _DEFAULT_ARGS))
         self.window_name = os.environ.get("GMOD_CLIENT_WINDOW", "Garry's Mod")
 
         lib_path = ":".join([
@@ -29,7 +31,7 @@ class ClientManager:
 
     async def start(self) -> dict:
         result = await self._pty.start()
-        result["window_id"] = self._window_id()
+        result["window_id"] = await asyncio.to_thread(self._window_id)
         return result
 
     async def stop(self) -> dict:

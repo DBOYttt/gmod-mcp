@@ -69,3 +69,15 @@ def test_capture_returns_error_on_timeout(screen):
 
     assert result.get("ok") is False
     assert "timed out" in result["error"]
+
+
+def test_capture_returns_error_on_corrupt_png(screen, tmp_path):
+    corrupt_path = str(tmp_path / "corrupt.png")
+    with open(corrupt_path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n")  # valid signature but no IHDR (only 8 bytes)
+
+    with patch("subprocess.run"):  # suppress xdotool + scrot calls
+        result = screen.capture(corrupt_path)
+
+    assert result.get("ok") is False
+    assert "invalid PNG" in result["error"]

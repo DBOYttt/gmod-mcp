@@ -54,3 +54,11 @@ def test_click_returns_error_on_timeout(ctrl):
 
     assert result["ok"] is False
     assert "timed out" in result["error"]
+
+
+def test_key_returns_error_on_timeout(ctrl):
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("xdotool", 5)):
+        result = ctrl.key("Return")
+
+    assert result["ok"] is False
+    assert "timed out" in result["error"]
