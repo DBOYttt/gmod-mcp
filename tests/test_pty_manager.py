@@ -1,4 +1,5 @@
 import asyncio
+import os as _os
 import pytest
 from gr_mcp.pty_manager import PtyManager
 
@@ -90,3 +91,19 @@ async def test_double_start_is_idempotent(echo_mgr):
     r1 = await echo_mgr.start()
     r2 = await echo_mgr.start()
     assert r1["pid"] == r2["pid"]
+
+
+async def test_custom_env_is_visible_to_subprocess():
+    """PtyManager passes custom env dict to the child process."""
+    env = {**_os.environ, "GR_PTY_TEST_VAR": "sentinel_value"}
+    mgr = PtyManager(
+        ["python3", "-c",
+         "import os; print(os.environ.get('GR_PTY_TEST_VAR', 'missing'))"],
+        "/tmp",
+        env=env,
+    )
+    await mgr.start()
+    result = await _wait_for_output(mgr, "sentinel_value", timeout=3.0)
+    texts = [l["text"] for l in result["lines"]]
+    assert any("sentinel_value" in t for t in texts)
+    await mgr.stop()

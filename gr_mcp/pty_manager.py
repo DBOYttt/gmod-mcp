@@ -21,9 +21,10 @@ class _Line:
 class PtyManager:
     RING_SIZE = 2000
 
-    def __init__(self, command: list[str], cwd: str) -> None:
+    def __init__(self, command: list[str], cwd: str, env: Optional[dict] = None) -> None:
         self._command = command
         self._cwd = cwd
+        self._env = env
         self._proc: Optional[subprocess.Popen] = None
         self._master_fd: Optional[int] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -45,6 +46,7 @@ class PtyManager:
                 stderr=slave_fd,
                 close_fds=True,
                 cwd=self._cwd,
+                env=self._env,
                 preexec_fn=os.setsid,
             )
         finally:
