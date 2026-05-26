@@ -3,15 +3,25 @@ import pytest
 from gr_mcp.pty_manager import PtyManager
 
 
+async def _wait_for_output(mgr, text, timeout=2.0):
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        result = mgr.read_output(since_line=0, limit=100)
+        if any(text in l["text"] for l in result["lines"]):
+            return result
+        await asyncio.sleep(0.05)
+    pytest.fail(f"Timed out waiting for '{text}' in output")
+
+
 @pytest.fixture
-def echo_mgr(tmp_path):
+async def echo_mgr(tmp_path):
     mgr = PtyManager(
         ["python3", "-c",
          "import sys, time; print('hello'); print('world'); sys.stdout.flush(); time.sleep(60)"],
         str(tmp_path),
     )
     yield mgr
-    mgr.stop()
+    await mgr.stop()
 
 
 def test_status_when_stopped():
@@ -30,15 +40,14 @@ async def test_start_returns_running(echo_mgr):
 
 async def test_stop_returns_ok(echo_mgr):
     await echo_mgr.start()
-    result = echo_mgr.stop()
+    result = await echo_mgr.stop()
     assert result["ok"] is True
     assert not echo_mgr.is_running()
 
 
 async def test_ring_buffer_captures_output(echo_mgr):
     await echo_mgr.start()
-    await asyncio.sleep(0.4)
-    result = echo_mgr.read_output(since_line=0, limit=50)
+    result = await _wait_for_output(echo_mgr, "hello")
     texts = [l["text"] for l in result["lines"]]
     assert any("hello" in t for t in texts)
     assert any("world" in t for t in texts)
@@ -46,7 +55,7 @@ async def test_ring_buffer_captures_output(echo_mgr):
 
 async def test_read_output_since_line_pagination(echo_mgr):
     await echo_mgr.start()
-    await asyncio.sleep(0.4)
+    await _wait_for_output(echo_mgr, "world")
     first = echo_mgr.read_output(since_line=0, limit=50)
     assert first["lines"]
     next_line = first["next_line"]
@@ -56,7 +65,7 @@ async def test_read_output_since_line_pagination(echo_mgr):
 
 async def test_read_output_pattern_filter(echo_mgr):
     await echo_mgr.start()
-    await asyncio.sleep(0.4)
+    await _wait_for_output(echo_mgr, "world")
     result = echo_mgr.read_output(since_line=0, pattern="world")
     texts = [l["text"] for l in result["lines"]]
     assert texts
@@ -65,6 +74,7 @@ async def test_read_output_pattern_filter(echo_mgr):
 
 async def test_exec_command_ok(echo_mgr):
     await echo_mgr.start()
+    await _wait_for_output(echo_mgr, "hello")
     result = echo_mgr.exec_command("echo testcmd")
     assert result["ok"] is True
 

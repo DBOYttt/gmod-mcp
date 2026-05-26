@@ -6,6 +6,7 @@ import re
 import signal
 import subprocess
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Optional
 
@@ -25,8 +26,9 @@ class PtyManager:
         self._cwd = cwd
         self._proc: Optional[subprocess.Popen] = None
         self._master_fd: Optional[int] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._start_time: Optional[float] = None
-        self._ring: list[_Line] = []
+        self._ring: deque[_Line] = deque(maxlen=self.RING_SIZE)
         self._line_counter = 0
         self._read_buf = b""
 
@@ -35,16 +37,23 @@ class PtyManager:
             return self.status()
 
         master_fd, slave_fd = pty.openpty()
-        self._proc = subprocess.Popen(
-            self._command,
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            close_fds=True,
-            cwd=self._cwd,
-            preexec_fn=os.setsid,
-        )
-        os.close(slave_fd)
+        try:
+            self._proc = subprocess.Popen(
+                self._command,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                close_fds=True,
+                cwd=self._cwd,
+                preexec_fn=os.setsid,
+            )
+        finally:
+            os.close(slave_fd)
+
+        # Fix 1: set O_NONBLOCK on master_fd so add_reader doesn't stall the loop
+        flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+        fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
         self._master_fd = master_fd
         self._start_time = time.time()
         self._ring.clear()
@@ -52,6 +61,8 @@ class PtyManager:
         self._read_buf = b""
 
         loop = asyncio.get_running_loop()
+        # Fix 2: store loop reference for use in _cleanup()
+        self._loop = loop
         loop.add_reader(master_fd, self._on_readable)
         return self.status()
 
@@ -66,24 +77,27 @@ class PtyManager:
             line_bytes, self._read_buf = self._read_buf.split(b"\n", 1)
             text = line_bytes.decode("utf-8", errors="replace").rstrip("\r")
             self._line_counter += 1
+            # Fix 5: deque with maxlen handles overflow automatically
             self._ring.append(_Line(n=self._line_counter, ts=time.time(), text=text))
-            if len(self._ring) > self.RING_SIZE:
-                self._ring.pop(0)
 
     def _cleanup(self) -> None:
         if self._master_fd is not None:
-            try:
-                asyncio.get_event_loop().remove_reader(self._master_fd)
-            except RuntimeError:
-                pass
+            # Fix 2: use stored loop reference instead of get_event_loop()
+            if self._loop is not None:
+                try:
+                    self._loop.remove_reader(self._master_fd)
+                except Exception:
+                    pass
             try:
                 os.close(self._master_fd)
             except OSError:
                 pass
             self._master_fd = None
+            self._loop = None
         self._proc = None
 
-    def stop(self) -> dict:
+    # Fix 3: async stop() using asyncio.to_thread for blocking wait
+    async def stop(self) -> dict:
         if self._proc is None:
             return {"ok": True}
         try:
@@ -91,13 +105,16 @@ class PtyManager:
         except (ProcessLookupError, PermissionError):
             pass
         try:
-            self._proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
+            await asyncio.wait_for(
+                asyncio.to_thread(self._proc.wait),
+                timeout=5.0,
+            )
+        except asyncio.TimeoutError:
             try:
                 os.killpg(os.getpgid(self._proc.pid), signal.SIGKILL)
             except Exception:
                 pass
-            self._proc.wait()
+            await asyncio.to_thread(self._proc.wait)
         self._cleanup()
         return {"ok": True}
 
@@ -136,11 +153,12 @@ class PtyManager:
     ) -> dict:
         lines = [l for l in self._ring if l.n > since_line]
         if pattern:
+            # Fix 6: return error dict on invalid regex instead of silently ignoring
             try:
                 rx = re.compile(pattern)
                 lines = [l for l in lines if rx.search(l.text)]
-            except re.error:
-                pass
+            except re.error as e:
+                return {"lines": [], "next_line": since_line, "error": f"Invalid regex: {e}"}
         lines = lines[:limit]
         next_line = lines[-1].n + 1 if lines else since_line
         return {
