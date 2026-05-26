@@ -55,7 +55,9 @@ class LuaRunner:
                 if seen_start:
                     if clean == end_tok:
                         return {"output": "\n".join(captured), "timed_out": False}
-                    captured.append(clean)
+                    # Skip GMod's "> <code>..." command echo lines
+                    if not (clean.startswith("> ") and clean.endswith("...")):
+                        captured.append(clean)
             await asyncio.sleep(self.POLL_INTERVAL)
 
         return {"output": "\n".join(captured), "timed_out": True}
