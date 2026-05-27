@@ -167,11 +167,11 @@ def gr_client_read_output(
 @mcp.tool()
 async def gr_client_screenshot(path: str = "") -> dict:
     """
-    Capture the GMod client window.
-    Tries the game's native JPEG screenshot first (works on Wayland),
-    then falls back to X11 window capture.
-    path: optional file path for X11 fallback; ignored for native capture.
-    Returns {path, base64_jpeg, width, height} or {path, base64_png, width, height}.
+    Capture the GMod client window via the in-game Lua bridge (no OS popup).
+    Uses render.Capture() inside GMod — works on Wayland, no Remote Desktop dialog.
+    Falls back to X11 window capture if the bridge is unavailable.
+    path: optional file path for X11 fallback only.
+    Returns {path, base64_png, width, height}.
     """
     result = await _client.screenshot_native()
     if result.get("ok") is not False:
