@@ -43,7 +43,7 @@ mkdir -p ~/.local/lib
 gcc -m32 -shared -fPIC -O2 -o ~/.local/lib/locale_fix.so server/locale_fix.c -ldl
 ```
 
-Set `LD_PRELOAD` to that path in your env and the dialog goes away. The [galaxies-reborn](https://github.com/DBOYttt/galaxies-reborn) `install_client.sh` does this automatically.
+Set `LD_PRELOAD` to that path in your env and the dialog goes away.
 
 ## Tools
 
